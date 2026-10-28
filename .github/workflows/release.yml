@@ -21,10 +21,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - id: windows
+            os: windows-latest
             target: --win
-          - os: macos-latest
-            target: --mac
+          # each Mac version on its own runner: packing both disk images at once makes macOS's hdiutil fail
+          - id: mac-arm64
+            os: macos-latest
+            target: --mac --arm64
+          - id: mac-x64
+            os: macos-latest
+            target: --mac --x64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +50,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ matrix.os }}
+          name: dist-${{ matrix.id }}
           if-no-files-found: error
           path: |
             dist/*.exe
