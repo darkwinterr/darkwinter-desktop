@@ -1,0 +1,74 @@
+# Builds Darkwinter for Windows and Mac and publishes the installers as the latest release of this repo.
+# Runs when anything changes on main, or by hand from the Actions tab ("Run workflow").
+# Bump "version" in package.json to ship a new release; darkwinter.lol's Download buttons always get the latest.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: --win
+          - os: macos-latest
+            target: --mac
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: App icon
+        shell: bash
+        run: |
+          mkdir -p build
+          [ -f build/icon.png ] || curl -fsSL --retry 5 --retry-delay 10 https://darkwinter.lol/brand/app-icon.png -o build/icon.png
+      - run: npm install --no-audit --no-fund
+      - name: Build
+        run: npx electron-builder ${{ matrix.target }} --publish never
+        env:
+          # Without an Apple Developer ID the Mac app gets an ad-hoc signature (build/after-pack.js).
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.blockmap
+            dist/latest*.yml
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - run: ls -la out
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.v.outputs.version }}
+          name: Darkwinter ${{ steps.v.outputs.version }}
+          body: "Darkwinter for Windows and Mac. Get it from https://darkwinter.lol/download"
+          make_latest: "true"
+          files: out/*
+          fail_on_unmatched_files: true
